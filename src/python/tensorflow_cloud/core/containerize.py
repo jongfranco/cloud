@@ -38,6 +38,10 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
+# cache expiration time for Kaniko
+_KANIKO_CACHE_TTL = "6h"
+
+
 def generate_image_uri():
     """Returns unique name+tag for a Docker image."""
     # Keeping this name format uniform with the job id.
@@ -542,20 +546,19 @@ class CloudContainerBuilder(ContainerBuilder):
 
         if cache_from:
             # Use the given Docker image as cache.
+                request_dict["steps"].append({
+                    "name":
+                        "gcr.io/kaniko-project/executor:latest",
+                    "args": [
+                        f"--destination={cache_from}", "--cache=true",
+                        f"--cache-ttl={_KANIKO_CACHE_TTL}"
+                    ],
+                })
+        else:
             request_dict["steps"].append({
                 "name": "gcr.io/cloud-builders/docker",
-                "entrypoint": "bash",
-                "args": [
-                    "-c",
-                    "docker pull {} || exit 0".format(cache_from),
-                ],
+                "args": build_args,
             })
-            build_args[3:3] = ["--cache-from", cache_from]
-
-        request_dict["steps"].append({
-            "name": "gcr.io/cloud-builders/docker",
-            "args": build_args,
-        })
         request_dict["source"] = {
             "storageSource": {
                 "bucket": self.docker_config.image_build_bucket,
